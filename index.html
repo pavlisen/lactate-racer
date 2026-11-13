@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Lactate Intolerant – Retro Racer V20</title>
+<title>Lactate Intolerant – Retro Racer V22</title>
 <style>
   :root{--cream:#fff4dc;--ink:#151515;--acid:#c6ff3d;--red:#ff3b3b;--mut:#6b6355;--card:#fffaf0}
   *{box-sizing:border-box}
@@ -130,9 +130,6 @@
     .riderChoice{gap:6px;padding:7px;font-size:13px}
     .kit{flex-basis:22px;height:24px}
   }
-  #directLink{margin-top:9px;font-size:13px}
-  #directLink summary{cursor:pointer;font-weight:800}
-  #directLink textarea{display:block;width:100%;margin-top:6px;min-height:60px;resize:vertical;font:12px monospace;user-select:text}
   #mpStatus{overflow-wrap:anywhere}
 </style>
 </head>
@@ -175,14 +172,6 @@
       <div class="mprow"><button class="go alt" id="mpCreate">Create race</button><input id="mpCode" maxlength="5" placeholder="CODE"><button class="go alt" id="mpJoin">Join</button></div>
       <div id="mpStatus" class="keys"></div>
       <div id="mpPlayers"></div>
-      <details id="directLink">
-        <summary>Direct link · if the room server fails</summary>
-        <p class="keys">Host creates an invite and sends it to their friend. Friend pastes it in the first box, creates a reply and sends it back. Host pastes the reply in the first box and clicks Accept reply.</p>
-        <textarea id="directIn" aria-label="Received connection code" placeholder="Paste the code you received"></textarea>
-        <div class="mprow"><button class="go alt" id="directOffer">Create invite</button><button class="go alt" id="directAnswer">Create reply</button><button class="go alt" id="directAccept">Accept reply</button></div>
-        <textarea id="directOut" readonly aria-label="Connection code to send" placeholder="Copy and send this code"></textarea>
-        <button class="go alt" id="directCopy">Copy code</button>
-      </details>
       <button class="go alt" id="mpLeave" style="display:none">Leave multiplayer</button>
     </div>
     <div class="sec">Pick your race</div>
@@ -1670,7 +1659,7 @@ $('mClose').onclick = () => { _mClose(); if (S.phase === 'paused' && $('pause').
 /* =================== MULTIPLAYER =================== */
 // Varianta 1: běží-li stránka na Claude, použije se "room" (místnost Clauda).
 // Varianta 2: jinde (GitHub Pages, Netlify…) se hráči propojí napřímo přes PeerJS (WebRTC).
-let connectionAttempt = 0, directPeer = null;
+let connectionAttempt = 0;
 const NET = {mode: null, code: null, host: false, peers: {}, rroom: null, peer: null, conns: [], hostConn: null, lastLb: undefined, id: Math.random().toString(36).slice(2, 10), mine: {}};
 let roomNs = null;
 (async () => { try { if (window.claude && typeof window.claude.use === 'function') roomNs = await window.claude.use('room'); } catch (e) {} })();
@@ -1711,166 +1700,174 @@ async function mpConnect(code, host) {
       onNetUpdate(); return;
     } catch (e) { if (attempt !== connectionAttempt) return; NET.rroom = null; mpStatus('Claude room unavailable (' + (e.code || 'error') + '), trying peer-to-peer…'); }
   }
-  try { await loadPeerJS(); } catch (e) {
-    if (attempt === connectionAttempt) { mpStatus('PeerJS could not load. Try Direct link below.'); $('directLink').open = true; }
-    return;
-  }
+  // 1) PeerJS; 2) záloha: signalizace přes ntfy.sh (obyčejné HTTPS) + přímé WebRTC spojení
+  let peerOk = false;
+  try { await loadPeerJS(); peerOk = true; } catch (e) {}
   if (attempt !== connectionAttempt) return;
-  const fail = (message, fallback = false) => {
+  const fail = message => {
     if (attempt !== connectionAttempt) return;
     mpLeave(true);
     if (host) $('mpCode').value = '';
     mpStatus(message);
-    if (fallback) $('directLink').open = true;
     renderLobby();
   };
-  const timer = setTimeout(() => {
-    if (!NET.mode) fail('Connection timed out. Try Direct link below.', true);
-  }, 15000);
   const ready = message => {
-    clearTimeout(timer);
     if (attempt !== connectionAttempt) return;
     NET.mode = 'peer';
     if (host) $('mpCode').value = code.toUpperCase();
     mpStatus(message);
     onNetUpdate();
   };
-  const peerError = e => {
-    clearTimeout(timer);
-    if (e.type === 'unavailable-id') fail('That code is taken. Create a new race.');
-    else if (e.type === 'peer-unavailable') fail('No race with that code. Check that the host sees Race created.');
-    else fail('PeerJS connection failed (' + e.type + '). Try Direct link below.', true);
-  };
-  try {
-    if (host) {
-      NET.peer = new Peer('lirr-' + code);
-      NET.peer.on('open', () => ready('Race created · code ' + code.toUpperCase() + ' · send it to your friend'));
-      NET.peer.on('connection', c => {
-        NET.conns.push(c);
-        c.on('data', d => { if (d && d.t === 'p' && d.p && typeof d.p.id === 'string') { c._id = d.p.id; NET.peers[d.p.id] = d.p; onNetUpdate(); } });
-        c.on('close', () => { NET.conns = NET.conns.filter(x => x !== c); delete NET.peers[c._id]; onNetUpdate(); });
-      });
-      NET.peer.on('error', peerError);
-    } else {
-      NET.peer = new Peer();
-      NET.peer.on('open', () => {
-        if (attempt !== connectionAttempt) return;
-        const c = NET.peer.connect('lirr-' + code); NET.hostConn = c;
-        c.on('open', () => ready('Joined race ' + code.toUpperCase()));
-        c.on('error', peerError);
-        c.on('data', d => { if (d && d.t === 'all' && d.m) { const m = {}; for (const k in d.m) if (k !== NET.id) m[k] = d.m[k]; NET.peers = m; onNetUpdate(); } });
-        c.on('close', () => { if (attempt !== connectionAttempt) return; mpStatus('Disconnected from the host.'); NET.peers = {}; onNetUpdate(); });
-      });
-      NET.peer.on('error', peerError);
+  if (host) {
+    let up = false;
+    const hostUp = () => { if (up) return; up = true; ready('Race created · code ' + code.toUpperCase() + ' · send it to your friends'); };
+    ntfyHost(code, attempt, hostUp);
+    if (peerOk) {
+      try {
+        NET.peer = new Peer('lirr-' + code);
+        NET.peer.on('open', hostUp);
+        NET.peer.on('connection', c => {
+          NET.conns.push(c);
+          c.on('data', d => { if (d && d.t === 'p' && d.p && typeof d.p.id === 'string') { c._id = d.p.id; NET.peers[d.p.id] = d.p; onNetUpdate(); } });
+          c.on('close', () => { NET.conns = NET.conns.filter(x => x !== c); delete NET.peers[c._id]; onNetUpdate(); });
+        });
+        NET.peer.on('error', e => { if (e.type === 'unavailable-id') fail('That code is taken. Create a new race.'); });
+      } catch (e) {}
     }
-  } catch (e) { clearTimeout(timer); fail('PeerJS could not start. Try Direct link below.', true); }
+    setTimeout(() => { if (!up) fail('Could not create the race – this network blocks both connection servers. Try a mobile hotspot.'); }, 15000);
+  } else {
+    let switched = false, joined = false;
+    const fallback = () => {
+      if (switched || joined || attempt !== connectionAttempt) return;
+      switched = true;
+      try { NET.peer && NET.peer.destroy(); } catch (e) {}
+      NET.peer = null; NET.hostConn = null;
+      mpStatus('Trying backup connection…');
+      ntfyJoin(code, attempt, ready, fail);
+    };
+    if (!peerOk) fallback();
+    else {
+      try {
+        NET.peer = new Peer();
+        const t = setTimeout(fallback, 8000);
+        NET.peer.on('open', () => {
+          if (attempt !== connectionAttempt || switched) return;
+          const c = NET.peer.connect('lirr-' + code); NET.hostConn = c;
+          c.on('open', () => { if (switched) return; joined = true; clearTimeout(t); ready('Joined race ' + code.toUpperCase()); });
+          c.on('error', () => { clearTimeout(t); fallback(); });
+          c.on('data', d => { if (d && d.t === 'all' && d.m) { const m = {}; for (const k in d.m) if (k !== NET.id) m[k] = d.m[k]; NET.peers = m; onNetUpdate(); } });
+          c.on('close', () => { if (attempt !== connectionAttempt || switched) return; mpStatus('Disconnected from the host.'); NET.peers = {}; onNetUpdate(); });
+        });
+        NET.peer.on('error', () => { clearTimeout(t); fallback(); });
+      } catch (e) { fallback(); }
+    }
+  }
   onNetUpdate();
+}
+
+/* ---- záložní spojení: ntfy.sh jako "pošťák" pro navázání spojení, hra pak jede přímo ---- */
+const NTFY = 'https://ntfy.sh/';
+const ICE = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun.cloudflare.com:3478'}];
+const ntfyTopic = code => 'lactate-racer-' + code + '-q7';
+async function ntfySend(topic, obj) {
+  const s = JSON.stringify(obj), mid = Math.random().toString(36).slice(2, 9), size = 3000, n = Math.ceil(s.length / size);
+  for (let i = 0; i < n; i++) await fetch(NTFY + topic, {method: 'POST', body: JSON.stringify({mid, i, n, d: s.slice(i * size, (i + 1) * size)})});
+}
+function ntfyListen(topic, onObj, onOpen) {
+  const parts = {};
+  const es = new EventSource(NTFY + topic + '/sse');
+  es.onopen = () => { if (onOpen) onOpen(); };
+  es.onmessage = ev => {
+    try {
+      const m = JSON.parse(ev.data);
+      if (m.event !== 'message' || !m.message) return;
+      const c = JSON.parse(m.message);
+      if (!c || typeof c.mid !== 'string' || typeof c.n !== 'number') return;
+      const p = parts[c.mid] = parts[c.mid] || [];
+      p[c.i] = c.d;
+      let have = 0; for (let i = 0; i < c.n; i++) if (typeof p[i] === 'string') have++;
+      if (have === c.n) { delete parts[c.mid]; onObj(JSON.parse(p.join(''))); }
+    } catch (e) {}
+  };
+  return () => es.close();
+}
+const iceDone = pc => new Promise(res => {
+  if (pc.iceGatheringState === 'complete') return res();
+  const t = setTimeout(res, 3000);
+  pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } });
+});
+function hostChannel(channel, attempt) {
+  const conn = {open: false, send: packet => { try { channel.send(JSON.stringify(packet)); } catch (e) {} }};
+  channel.onopen = () => { if (attempt !== connectionAttempt) return; conn.open = true; NET.conns.push(conn); onNetUpdate(); };
+  channel.onmessage = ev => {
+    if (attempt !== connectionAttempt) return;
+    try { const d = JSON.parse(ev.data); if (d && d.t === 'p' && d.p && typeof d.p.id === 'string') { conn._id = d.p.id; NET.peers[d.p.id] = d.p; onNetUpdate(); } } catch (e) {}
+  };
+  channel.onclose = () => { conn.open = false; NET.conns = NET.conns.filter(x => x !== conn); if (conn._id) delete NET.peers[conn._id]; onNetUpdate(); };
+}
+function ntfyHost(code, attempt, hostUp) {
+  const topic = ntfyTopic(code);
+  NET.pcs = [];
+  try {
+    NET.ntfyStop = ntfyListen(topic, async msg => {
+      if (attempt !== connectionAttempt || !msg || msg.k !== 'offer' || typeof msg.from !== 'string' || !msg.sdp) return;
+      try {
+        const pc = new RTCPeerConnection({iceServers: ICE}); NET.pcs.push(pc);
+        pc.ondatachannel = ev => hostChannel(ev.channel, attempt);
+        await pc.setRemoteDescription(msg.sdp);
+        await pc.setLocalDescription(await pc.createAnswer());
+        await iceDone(pc);
+        if (attempt !== connectionAttempt) return;
+        await ntfySend(topic, {k: 'answer', to: msg.from, sdp: pc.localDescription});
+      } catch (e) { console.warn('Backup host error', e); }
+    }, hostUp);
+  } catch (e) {}
+}
+function ntfyJoin(code, attempt, ready, fail) {
+  const topic = ntfyTopic(code);
+  const timer = setTimeout(() => fail('No race with that code, or this network blocks the connection. Check the code, or try a mobile hotspot.'), 20000);
+  try {
+    const pc = new RTCPeerConnection({iceServers: ICE}); NET.pcs = [pc];
+    const ch = pc.createDataChannel('race');
+    ch.onopen = () => {
+      if (attempt !== connectionAttempt) return;
+      clearTimeout(timer);
+      NET.hostConn = {open: true, send: p => { try { ch.send(JSON.stringify(p)); } catch (e) {} }};
+      if (NET.ntfyStop) { NET.ntfyStop(); NET.ntfyStop = null; }
+      ready('Joined race ' + code.toUpperCase() + ' · backup connection');
+    };
+    ch.onmessage = ev => {
+      if (attempt !== connectionAttempt) return;
+      try { const d = JSON.parse(ev.data); if (d && d.t === 'all' && d.m) { const m = {}; for (const k in d.m) if (k !== NET.id) m[k] = d.m[k]; NET.peers = m; onNetUpdate(); } } catch (e) {}
+    };
+    ch.onclose = () => { if (attempt !== connectionAttempt) return; mpStatus('Disconnected from the host.'); NET.peers = {}; NET.hostConn = null; onNetUpdate(); };
+    let sent = false;
+    NET.ntfyStop = ntfyListen(topic, async msg => {
+      if (attempt !== connectionAttempt || !msg || msg.k !== 'answer' || msg.to !== NET.id || pc.remoteDescription) return;
+      try { await pc.setRemoteDescription(msg.sdp); } catch (e) { console.warn('Backup join error', e); }
+    }, async () => {
+      if (sent) return; sent = true;
+      try {
+        await pc.setLocalDescription(await pc.createOffer());
+        await iceDone(pc);
+        if (attempt !== connectionAttempt) return;
+        await ntfySend(topic, {k: 'offer', from: NET.id, sdp: pc.localDescription});
+      } catch (e) { console.warn('Backup offer error', e); }
+    });
+  } catch (e) { clearTimeout(timer); fail('Backup connection could not start in this browser.'); }
 }
 function mpLeave(silent) {
   connectionAttempt++;
-  if (directPeer) { directPeer.close(); directPeer = null; }
-  $('directOut').value = '';
   try { NET.rroom && NET.rroom.leave(); } catch (e) {}
   try { NET.peer && NET.peer.destroy(); } catch (e) {}
-  Object.assign(NET, {mode: null, rroom: null, peer: null, conns: [], hostConn: null, peers: {}, host: false, code: null});
+  try { if (NET.ntfyStop) NET.ntfyStop(); } catch (e) {}
+  (NET.pcs || []).forEach(pc => { try { pc.close(); } catch (e) {} });
+  Object.assign(NET, {mode: null, rroom: null, peer: null, conns: [], hostConn: null, peers: {}, host: false, code: null, ntfyStop: null, pcs: []});
   if (!silent) { mpStatus(''); onNetUpdate(); }
 }
 $('mpCreate').onclick = () => { const c = genCode(); $('mpCode').value = ''; mpConnect(c, true); };
 $('mpJoin').onclick = () => mpConnect($('mpCode').value, false);
 $('mpLeave').onclick = () => mpLeave(false);
-function useDirectChannel(channel, host, attempt) {
-  const current = () => attempt === connectionAttempt;
-  const send = packet => channel.send(JSON.stringify(packet));
-  channel.onopen = () => {
-    if (!current()) return;
-    NET.mode = 'peer';
-    if (host) NET.conns = [{open: true, send}];
-    else NET.hostConn = {open: true, send};
-    mpStatus('Direct link connected · wait for both names, then host picks a race.');
-    onNetUpdate();
-  };
-  channel.onmessage = event => {
-    if (!current()) return;
-    try {
-      const packet = JSON.parse(event.data);
-      if (host && packet.t === 'p' && typeof packet.p?.id === 'string') NET.peers = {[packet.p.id]: packet.p};
-      else if (!host && packet.t === 'all' && packet.m) {
-        NET.peers = Object.fromEntries(Object.entries(packet.m).filter(([id]) => id !== NET.id));
-      } else return;
-      onNetUpdate();
-    } catch (error) { console.warn('Invalid direct link message', error); }
-  };
-  channel.onclose = () => {
-    if (!current()) return;
-    mpLeave(true);
-    renderLobby();
-    mpStatus('Direct link closed.');
-  };
-}
-function readDirectCode(type) {
-  const description = JSON.parse(atob($('directIn').value.trim()));
-  if (description.type !== type || typeof description.sdp !== 'string') throw new Error('Paste a valid ' + type + ' code.');
-  return description;
-}
-async function makeDirectCode(host) {
-  let attempt = connectionAttempt;
-  try {
-    const offer = host ? null : readDirectCode('offer');
-    mpLeave(true);
-    attempt = connectionAttempt;
-    renderLobby();
-    const nick = ($('mpNick').value.trim() || 'Rider').slice(0, 14);
-    Object.assign(NET, {host, lastLb: null, mine: {id: NET.id, n: nick, c: CH.id, h: host ? 1 : 0, st: null, fin: null, lb: null}});
-    const peer = new RTCPeerConnection({iceServers: [{urls: 'stun:stun.l.google.com:19302'}]});
-    directPeer = peer;
-    peer.onconnectionstatechange = () => {
-      if (peer === directPeer && peer.connectionState === 'failed') {
-        mpLeave(true);
-        renderLobby();
-        mpStatus('Direct link could not pass the network firewall. Try a mobile hotspot.');
-      }
-    };
-    mpStatus('Preparing direct connection code…');
-    if (host) useDirectChannel(peer.createDataChannel('race'), true, attempt);
-    else {
-      peer.ondatachannel = event => useDirectChannel(event.channel, false, attempt);
-      await peer.setRemoteDescription(offer);
-    }
-    await peer.setLocalDescription(host ? await peer.createOffer() : await peer.createAnswer());
-    if (peer.iceGatheringState !== 'complete') await new Promise(resolve => {
-      const done = () => {
-        clearTimeout(timer);
-        peer.removeEventListener('icegatheringstatechange', check);
-        resolve();
-      };
-      const check = () => { if (peer.iceGatheringState === 'complete') done(); };
-      const timer = setTimeout(done, 6500);
-      peer.addEventListener('icegatheringstatechange', check);
-    });
-    if (attempt !== connectionAttempt) return;
-    $('directOut').value = btoa(JSON.stringify(peer.localDescription));
-    mpStatus(host ? 'Send the invite code to your friend.' : 'Send the reply code back to the host.');
-  } catch (error) {
-    if (attempt === connectionAttempt) mpStatus('Direct link: ' + error.message);
-  }
-}
-$('directOffer').onclick = () => makeDirectCode(true);
-$('directAnswer').onclick = () => makeDirectCode(false);
-$('directAccept').onclick = async () => {
-  try {
-    if (!directPeer || !NET.host) throw new Error('Create an invite first.');
-    await directPeer.setRemoteDescription(readDirectCode('answer'));
-    if (!NET.mode) mpStatus('Connecting directly…');
-  } catch (error) { mpStatus('Direct link: ' + error.message); }
-};
-$('directCopy').onclick = async () => {
-  const output = $('directOut');
-  if (!output.value) return;
-  output.focus();
-  output.select();
-  try { await navigator.clipboard.writeText(output.value); mpStatus('Connection code copied.'); }
-  catch { mpStatus('Code selected. Press Ctrl+C or use Copy.'); }
-};
 function hostPresence() { return Object.values(NET.peers).find(p => p && p.h === 1); }
 function renderLobby() {
   $('mpLeave').style.display = NET.mode ? '' : 'none';
