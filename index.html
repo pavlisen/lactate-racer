@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Lactate Intolerant – Retro Racer V30</title>
+<title>Lactate Intolerant – Retro Racer V31</title>
 <style>
   :root{--cream:#fff4dc;--ink:#151515;--acid:#c6ff3d;--red:#ff3b3b;--mut:#6b6355;--card:#fffaf0}
   *{box-sizing:border-box}
@@ -125,6 +125,7 @@
   .riderChoice small{color:var(--mut)}
   .kit{filter:drop-shadow(0 0 1px #151515)}
   .kit.original{background:#9fcd21}
+  .kit.joe{background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23e53935' d='M12 21C3 14 4 5 12 9c8-4 9 5 0 12z'/%3E%3C/svg%3E") center/70% no-repeat}
   #menu button:focus-visible{outline-color:var(--ink)}
   @media(max-width:430px){
     #menu .card{padding:14px}
@@ -288,7 +289,7 @@ const LEVELS = [
    target:320, hw:4, wall:8, bot:10.6, lac:1.0,
    pts:[[0,0],[50,-5],[82,15],[72,46],[42,36],[22,62],[-16,56],[-30,25]], hs:[0,0,2,3,1,0,2,0],
    kick:{n:0, L:7, H:1.3}, barriers:2, mud:1, sand:1, stairs:1, rocks:0, obstacles:0,
-   bots:[['eBike Grandma','#b04aa8'],['Kermis King','#f2f2f2',1.12,'rival'],['Polder Prince','#ff2fd0',1.12,'rival'],['Zone 2 Steve','#2f9e6a']]},
+   bots:[['eBike Grandma','#b04aa8'],['Kermis King','#f2f2f2'],['Polder Prince','#ff2fd0'],['Zone 2 Steve','#2f9e6a']]},
   {name:'Nové Město MTB', sub:'Forest, rock gardens, big drops and a climb that hates you.', theme:'mtb',
    target:360, hw:3.6, wall:9, bot:10.9, lac:1.2,
    pts:[[0,0],[60,0],[100,30],[95,80],[50,100],[0,85],[-30,110],[-70,80],[-50,35]], hs:[0,2,8,14,18,12,8,4,1],
@@ -308,7 +309,7 @@ const PROFILES = {
 };
 
 const RIDERS = [
-  {id: 'original', profile: 'all', kit: 'original', name: 'Original', jersey: '#c6ff3d', frame: 0xff3b3b},
+  {id: 'original', profile: 'all', kit: 'joe', name: 'Average Joe', jersey: 'JOE', frame: 0xff3b3b},
   {id: 'mvdp', profile: 'all', kit: 'world', name: 'Mathieu van der Poel', jersey: 'MVDP', frame: 0x28313e, tag: 'MVDP'},
   {id: 'healy', profile: 'all', kit: 'ef', name: 'Ben Healy', jersey: '#f653a5', frame: 0x372d3a, tag: 'BEN HEALY', headTilt: -Math.PI / 4, jerseyMark: 'EF'},
   {id: 'pogacar', profile: 'all', kit: 'yellow', name: 'Tadej Pogačar', jersey: '#ffd520', frame: 0x211f23, tag: 'POGAČAR', jerseyMark: 'UAE', halo: true},
@@ -397,7 +398,7 @@ function renderMenu() {
   $('levels').innerHTML = LEVELS.map((l, i) => {
     const lock = !NET.mode && i + 1 > unlocked, b = best[bestKey(i, lapsFor(l, SET.laps))];
     const st = b ? '★'.repeat(b.stars) + '☆'.repeat(3 - b.stars) : (lock ? '🔒' : '☆☆☆');
-    return `<button class="lv ${lock ? 'locked' : ''}" data-i="${i}" type="button"><span><b>${i + 1}. ${l.name}</b><small>${l.sub}${b ? ' · best ' + b.time.toFixed(1) + ' s' : ''}</small></span><span class="st">${st}</span></button>`;
+    return `<button class="lv ${lock ? 'locked' : ''}" data-i="${i}" type="button"><span><b>${i + 1}. ${l.name}</b><small>${l.sub}${l.theme === 'ventoux' && SET.laps > 1 ? ' · point-to-point, always 1 lap' : ''}${b ? ' · best ' + b.time.toFixed(1) + ' s' : ''}</small></span><span class="st">${st}</span></button>`;
   }).join('');
   document.querySelectorAll('.lv').forEach(el => el.onclick = () => { const i = +el.dataset.i; if (NET.mode && !NET.host) { mpStatus('Only the host picks the race. Waiting…'); return; } if (i + 1 <= unlocked || NET.mode) startLevel(i); });
   renderLobby();
@@ -544,6 +545,15 @@ function usaJersey() {
   g.fillText('★', 23, 37); g.fillText('★', 105, 37);
   return new THREE.MeshLambertMaterial({map: new THREE.CanvasTexture(c)});
 }
+function joeBack() {            // bílá záda s jedním červeným srdcem
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 128);
+  g.beginPath(); g.moveTo(64, 104);
+  g.bezierCurveTo(8, 66, 22, 22, 64, 48); g.bezierCurveTo(106, 22, 120, 66, 64, 104); g.closePath();
+  g.fillStyle = '#e53935'; g.fill();
+  return new THREE.MeshLambertMaterial({map: new THREE.CanvasTexture(c)});
+}
 function germanyJersey(back = false) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -605,8 +615,8 @@ function quadzillaThigh(side) {
 }
 function makeRider(jersey, name, mtb, frameColor = 0xff3b3b, headTilt = 0, jerseyMark = null, halo = false, timeTrial = false) {
   const g = new THREE.Group(); g.rotation.order = 'YXZ';
-  const isCTW = jersey === 'CTW', isSimmons = jersey === 'USA', trackBike = jersey === 'GER';
-  const bikeMat = LAM(0x151515), jMat = isCTW ? new THREE.MeshLambertMaterial({map: ctwTex()}) : jersey === 'MVDP' ? rainbowJersey(timeTrial ? '' : 'MVDP') : trackBike ? germanyJersey() : LAM(isSimmons ? 0x20396a : new THREE.Color(jersey)), skin = LAM(0xf1c9a5), wheelMat = LAM(0x222222);
+  const isCTW = jersey === 'CTW', isSimmons = jersey === 'USA', trackBike = jersey === 'GER', isJoe = jersey === 'JOE';
+  const bikeMat = LAM(0x151515), jMat = isCTW ? new THREE.MeshLambertMaterial({map: ctwTex()}) : jersey === 'MVDP' ? rainbowJersey(timeTrial ? '' : 'MVDP') : trackBike ? germanyJersey() : isJoe ? LAM(0xffffff) : LAM(isSimmons ? 0x20396a : new THREE.Color(jersey)), skin = LAM(0xf1c9a5), wheelMat = LAM(0x222222);
   const bike = new THREE.Group(); g.add(bike);
   const roadBike = timeTrial || trackBike || !mtb;
   const wr = roadBike ? .34 : .37, tube = roadBike ? .045 : .1;
@@ -678,7 +688,7 @@ function makeRider(jersey, name, mtb, frameColor = 0xff3b3b, headTilt = 0, jerse
   const torsoGeometry = new THREE.BoxGeometry(.38,.62,.26);
   // BoxGeometry face 5 points backwards along the bike.
   const torso = new THREE.Mesh(torsoGeometry, trackBike
-    ? [torsoMat,torsoMat,torsoMat,torsoMat,torsoMat,germanyJersey(true)] : torsoMat); g.add(torso);
+    ? [torsoMat,torsoMat,torsoMat,torsoMat,torsoMat,germanyJersey(true)] : isJoe ? [torsoMat,torsoMat,torsoMat,torsoMat,torsoMat,joeBack()] : torsoMat); g.add(torso);
   const neck = new THREE.Group();
   g.add(neck);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 8), skin);
@@ -772,7 +782,7 @@ function makeRider(jersey, name, mtb, frameColor = 0xff3b3b, headTilt = 0, jerse
     const shin = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.48, 0.12), skin); shin.position.y = -0.72; shin.visible = false; hip.add(shin);
     g.add(hip); legs.push(hip);
   }
-  if (name) { const lb = label(name, isCTW || jersey === 'MVDP' || isSimmons || trackBike ? '#ffffff' : jersey); lb.position.set(0, 1.95, 0); lb.userData.isLabel = true; lb.visible = SET.names; g.add(lb); }
+  if (name) { const lb = label(name, isCTW || jersey === 'MVDP' || isSimmons || trackBike || isJoe ? '#ffffff' : jersey); lb.position.set(0, 1.95, 0); lb.userData.isLabel = true; lb.visible = SET.names; g.add(lb); }
   const o = {g, legs, bike, wheels, torso, neck, headTilt, beard, arms, carry: 0, mtb: !roadBike};
   pose(o, 0);
   return o;
@@ -1658,6 +1668,15 @@ function placeRider(prog) {
   const sp = sampleAt(prog), nr = nearest(sp.x, sp.z, Math.floor(wrap(prog) / TR.ds) % TR.N);
   Object.assign(R, {x: sp.x, z: sp.z, y: H(prog), psi: sp.hd, v: 0, air: false, vy: 0, vh: 0, roll: 0, rollV: 0, rollTot: 0, pitch: 0, idx: nr.i, prog, lean: 0, dismount: 0});
 }
+// Jak se kterému typu jezdce daří na které trati (násobí rychlost bota).
+// Pro konkrétního jezdce to jde přebít v seznamu RIDERS: skill: {garage: 1.1, ventoux: 0.9}
+const TERRAIN_SKILL = {
+  garage:  {sprint: 1.07, all: 1.00, climb: 0.94},
+  cx:      {sprint: 0.99, all: 1.04, climb: 0.97},
+  mtb:     {sprint: 0.95, all: 1.03, climb: 1.03},
+  ventoux: {sprint: 0.90, all: 1.00, climb: 1.08}
+};
+const terrainSkill = (rider, theme) => (rider.skill && Number.isFinite(rider.skill[theme]) ? rider.skill[theme] : (TERRAIN_SKILL[theme] || {})[rider.profile]) || 1;
 const lapsFor = (lv, n) => lv.theme === 'ventoux' ? 1 : clamp(Math.round(n) || 1, 1, 3);
 const GOAL = () => TR.finish + ((S.laps || 1) - 1) * TR.L;
 const lapBase = p => Math.max(0, Math.floor(p / TR.L)) * TR.L;
@@ -1692,12 +1711,11 @@ function startLevel(i, runnerRoll = Math.random(), hostRiders = [], fromHost = f
   bots = botRiders.map((rider, index) => {
     const lane = [-1.6, 1.6, -1.2, 1.2][index % 4];
     const slot = lvl.bots[index % lvl.bots.length];
-    return {id: rider.id, name: rider.name, mult: (slot[2] || 1) * Math.sqrt(rider.cruise / 3.6),
+    return {id: rider.id, name: rider.name, mult: (slot[2] || 1) * Math.sqrt(rider.cruise / 3.6) * terrainSkill(rider, lvl.theme),
       climb: rider.climb, rival: index < lvl.bots.length && slot[3] === 'rival',
       prog: [-12, -9, -3, 0][index % 4] - Math.floor(index / 4) * 3, lane, lane0: lane, laneT: lane,
-      crash: 0, v: 0, ph: Math.random() * TAU, fq: 0.45 + Math.random() * 0.6, form: 0.95 + Math.random() * 0.1, nextEv: 3 + Math.random() * 6, fade: 0, crank: 0, fin: null, hop: 0, atk: 0};
+      crash: 0, v: 0, ph: Math.random() * TAU, fq: 0.45 + Math.random() * 0.6, form: 0.97 + Math.random() * 0.06, nextEv: 3 + Math.random() * 6, fade: 0, crank: 0, fin: null, hop: 0, atk: 0};
   });
-  S.nextBanter = 5;
   for (const b of TR.barriers) b.done = false;
   S.ctw = 0; S.sprintT = 0; S.climb = 0; S.carUsed = false; S.carWarn = false; removeTrain(); kart = null; S.kartIdx = 0;
   Object.assign(S, {phase: 'count', t: 0, count: 3.2, idle: 0, crashes: 0, flips: 0, maxLac: 0, rage: 0, ebike: 0, overload: 0, nextRage: 0, bonk: 0, goBeep: false, shake: 0, laps, lapNow: 1, goAt: 0, startJudged: false, spin: 0});
@@ -1753,7 +1771,6 @@ function hop() {
   if (S.phase !== 'race' || R.air || R.crash > 0 || R.dismount > 0) return;
   R.air = true; R.vy = 2.4; R.vh = R.v; R.rollV = (Math.random() - .5) * 0.3; R.rollTot = 0; beep(520, .05, .03);
 }
-const BANTER = ['% never pulls. Not once. Not since 2019.', 'Watch the barriers, %. Oh wait, you run them.', 'I let % win last week. Out of pity.', '% has more bikes than results.', 'Pull through, %! …% is not pulling through.', 'Who invited %? Seriously.'];
 const RAGE = ["You're not tired. Your brain is negotiating. We don't negotiate.", 'The couch never helped anyone. Ever.', 'You said "one more interval"? Now it\'s ten.', 'Your excuses are in the bunch behind you. Drop them.', 'Nobody is coming to save you. Not even the fan.', "That's not sweat. That's weakness leaving. A LOT of weakness."];
 
 function canPedal() {
@@ -1787,7 +1804,7 @@ function updateBots(dt) {
       b.lane += (clamp(ln, -12, 12) - b.lane) * Math.min(1, dt * 6);
       b.crash = fl & 1 ? 0.3 : 0;
       if ((fl & 2) && !b.hopF) b.hop = 0.6; b.hopF = !!(fl & 2); b.hop = Math.max(0, b.hop - dt);
-      b.atk = fl & 4 ? 0.2 : 0; b.mode = null;
+      b.atk = fl & 4 ? 0.2 : 0;
       b.fin = fin > 0 ? fin : null;
       b.crank += b.v / 2.1 * TAU * dt;
     });
@@ -1798,9 +1815,9 @@ function updateBots(dt) {
     if (b.crash > 0) { b.crash -= dt; b.v = 0; if (b.fin === null && b.prog >= GOAL()) b.fin = S.t; continue; }
     const gap = b.prog - R.prog, z = zoneAt(b.prog);
     const sl = Math.atan(H(b.prog + 0.5) - H(b.prog - 0.5));
-    let tv = lvl.bot * b.mult * b.form * (1 + (b.rival ? 0.09 : 0.06) * Math.sin(S.t * b.fq + b.ph)) - Math.sin(sl) * 14 * (sl > 0 ? b.climb : 1);
+    let tv = lvl.bot * b.mult * b.form * (1 + 0.06 * Math.sin(S.t * b.fq + b.ph)) - Math.sin(sl) * 14 * (sl > 0 ? b.climb : 1);
     // náhodné události: nástup, krize, změna stopy, občas pád
-    if (S.phase === 'race' && !b.mode && b.fin === null) {
+    if (S.phase === 'race' && b.fin === null) {
       b.nextEv -= dt;
       if (b.nextEv <= 0) {
         b.nextEv = 4 + Math.random() * 8;
@@ -1814,14 +1831,12 @@ function updateBots(dt) {
     if (b.atk > 0) { b.atk -= dt; tv *= 1.18; }
     if (b.fade > 0) { b.fade -= dt; tv *= 0.87; }
     if (z === 'mud') tv *= 0.75; if (z === 'rocks') tv *= 0.85; if (z === 'sand') tv *= 0.65;
-    if (onStairs(b.prog) && b.mode !== 'fly') tv = Math.min(tv, 3.2);
     if (gap > 16) tv -= Math.min(6, (gap - 16) * 0.3);
     if (gap < -28) tv += Math.min(4, (-gap - 28) * 0.15);
-    if (b.mode === 'fly') { tv = Math.max(R.v, 8) * 1.9 + 6; if (gap > 18) { b.mode = 'situp'; toast('😮‍💨 ' + b.name + ' sits up and checks his hair.', '', 1400); } }
-    else if (b.mode === 'situp') { tv = Math.max(2.5, R.v * 0.55); if (gap < -10) b.mode = null; }
     if (b.fin !== null) tv = 4;
     tv = Math.max(2.5, tv);
-    b.v += (tv - b.v) * Math.min(1, dt * (b.mode === 'fly' ? 4 : 1.5));
+    b.v += (tv - b.v) * Math.min(1, dt * 1.5);
+    if (onStairs(b.prog)) b.v = Math.min(b.v, 3.3 + (b.atk > 0 ? 0.3 : 0));   // schody se běží: tvrdý strop, o chlup rychleji než hráč (3,0)
     const pp = b.prog; b.prog += b.v * dt; b.crank += b.v / 2.1 * TAU * dt;
     for (const br of TR.barriers) if (pp - lapBase(b.prog) < br.s - 2 && b.prog - lapBase(b.prog) >= br.s - 2) b.hop = 0.6;
     b.hop = Math.max(0, b.hop - dt);
@@ -2012,20 +2027,8 @@ function update(dt) {
       pavelAudio.play().catch(() => {});
     }
   }
-  // rivalové
-  const riv = bots.filter(b => b.rival);
-  if (riv.length === 2 && S.phase === 'race' && botsLocal()) {
-    S.nextBanter -= dt;
-    if (S.nextBanter <= 0) {
-      S.nextBanter = 10;
-      const [a, c] = (riv[0].prog - R.prog) < (riv[1].prog - R.prog) ? riv : [riv[1], riv[0]];
-      if (!c.mode && c.prog - R.prog > 6) c.mode = 'situp';
-      if (!a.mode && a.prog - R.prog < 6) { a.mode = 'fly'; toast('💨 ' + a.name + ' flies past at ' + Math.round((Math.max(R.v, 8) * 1.9 + 6) * 3.6) + ' km/h!', '', 1800); }
-      setTimeout(() => toast('💬 ' + c.name + ': ' + pick(BANTER).replace('%', a.name), '', 2400), 2500);
-    }
-  }
   { const ln = Math.min(S.laps, 1 + Math.max(0, Math.floor((R.prog - TR.finish) / TR.L) + 1));
-    if (S.laps > 1 && ln > S.lapNow && R.prog < GOAL()) { S.lapNow = ln; toast(ln === S.laps ? '🔔 FINAL LAP!' : '🔁 Lap ' + ln + '/' + S.laps, 'big', 1800); beep(990, .15); } }
+    if (S.laps > 1 && ln > S.lapNow && R.prog < GOAL()) { S.lapNow = ln; S.carUsed = false; S.carWarn = false; toast(ln === S.laps ? '🔔 FINAL LAP!' : '🔁 Lap ' + ln + '/' + S.laps, 'big', 1800); beep(990, .15); } }
   if (R.prog >= GOAL() && S.phase === 'race') finish(crossingTime(prevProg, R.prog, dt));
   else if (NET.mode && S.phase === 'race' && S.t > 3) {
     const fins = remotesHere().map(q => q.fin).filter(f => f != null);
@@ -2477,7 +2480,7 @@ function onNetUpdate() {
   }
   if (S.phase === 'done') renderMpResults();
 }
-const VERSION = 30;
+const VERSION = 31;
 const CHAT = ['GG 👏', 'Wait! ✋', '😂', 'Go go go! 🔥', 'One more? 🔁', 'Ready? 👀', 'Nice one 💪', 'Oops 🙈'];
 const PTS = [10, 7, 5, 3, 2, 1];
 const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, '').slice(0, 24);
@@ -2545,7 +2548,7 @@ function netTick(dt) {
   NET.mine.c = CH.id; NET.mine.ver = VERSION;
   if (NET.host) {
     const live = TR && S.phase !== 'menu';
-    NET.mine.bt = live ? bots.map(b => [+b.prog.toFixed(1), +b.lane.toFixed(1), (b.crash > 0 ? 1 : 0) | (b.hop > 0 ? 2 : 0) | ((b.atk > 0 || b.mode === 'fly') ? 4 : 0), b.fin != null ? +b.fin.toFixed(2) : 0, +b.v.toFixed(1)]) : null;
+    NET.mine.bt = live ? bots.map(b => [+b.prog.toFixed(1), +b.lane.toFixed(1), (b.crash > 0 ? 1 : 0) | (b.hop > 0 ? 2 : 0) | (b.atk > 0 ? 4 : 0), b.fin != null ? +b.fin.toFixed(2) : 0, +b.v.toFixed(1)]) : null;
     NET.mine.btl = live ? LV : null;
     NET.mine.sr = NET.series;
     awardSeries();
@@ -2675,7 +2678,7 @@ function render(dt) {
     const hopY = b.hop > 0 ? Math.sin((0.6 - b.hop) / 0.6 * Math.PI) * 0.7 : 0;
     const sl = Math.atan(H(b.prog + 0.5) - H(b.prog - 0.5));
     syncRider(botObjs[k], x, H(b.prog) + hopY, z, sp.hd, sl, b.crash > 0 ? 1.35 : 0, b.crank, onStairs(b.prog), dt,
-      b.fin === null && b.crash <= 0 && b.hop <= 0 && !onStairs(b.prog) && (b.atk > 0 || b.mode === 'fly'), b.v);
+      b.fin === null && b.crash <= 0 && b.hop <= 0 && !onStairs(b.prog) && b.atk > 0, b.v);
     const nameTag = botObjs[k].g.children.find(child => child.userData.isLabel);
     nameTag.material.color.set(S.rage > 0 ? 0xff6666 : 0xffffff);
   });
@@ -2738,7 +2741,7 @@ function hud() {
 const MINI_COLS = ['#ff3b3b', '#3a7bd5', '#ff8a3a', '#b04aa8', '#00b3a4', '#ffd400', '#7a4b2a'];
 let miniKey = null, miniBox = null;
 function drawMini() {
-  const cv = $('mini'), show = !!NET.mode && S.phase !== 'menu' && !!TR;
+  const cv = $('mini'), show = S.phase !== 'menu' && !!TR;
   cv.style.display = show ? 'block' : 'none';
   if (!show) return;
   if (miniKey !== TR) {
