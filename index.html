@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Lactate Intolerant – Retro Racer V31</title>
+<title>Lactate Intolerant – Retro Racer V32</title>
 <style>
   :root{--cream:#fff4dc;--ink:#151515;--acid:#c6ff3d;--red:#ff3b3b;--mut:#6b6355;--card:#fffaf0}
   *{box-sizing:border-box}
@@ -139,7 +139,7 @@
   .chatBtns button{border:2px solid var(--ink);border-radius:999px;background:#fff;color:var(--ink);font:inherit;font-size:12px;font-weight:700;padding:4px 9px;cursor:pointer}
   .chatBtns button:active{background:var(--acid)}
   .chatLog{font-size:12px;color:var(--mut);margin-top:5px;line-height:1.45}
-  #lapRow .go{flex:0 0 54px;padding:7px} #lapRow .go.sel{background:var(--acid)} #lapRow .go:disabled{opacity:.4;cursor:not-allowed}
+  #lapRow .go{flex:0 0 54px;padding:7px} #lapRow .go.sel{background:var(--acid)} #lapRow .go:disabled{opacity:.4;cursor:not-allowed} #lapRow #diffBtn{flex:0 0 112px;white-space:nowrap;padding:7px 6px}
   #mini{position:fixed;right:10px;top:62px;width:124px;height:124px;z-index:3;background:rgba(255,250,240,.82);border:3px solid var(--ink);border-radius:12px;box-shadow:3px 3px 0 var(--ink);display:none;pointer-events:none}
   body.menu-open > #mini{visibility:hidden}
   .chip.draft{background:var(--acid)}
@@ -204,7 +204,7 @@
       <button class="go alt" id="mpLeave" style="display:none">Leave multiplayer</button>
     </div>
     <div class="sec">Pick your race</div>
-    <div class="mprow" id="lapRow" style="margin-bottom:6px"><span style="font-weight:800;font-size:13px">Laps</span><button class="go alt" data-laps="1">1</button><button class="go alt" data-laps="2">2</button><button class="go alt" data-laps="3">3</button></div>
+    <div class="mprow" id="lapRow" style="margin-bottom:6px"><span style="font-weight:800;font-size:13px">Laps</span><button class="go alt" data-laps="1">1</button><button class="go alt" data-laps="2">2</button><button class="go alt" data-laps="3">3</button><span style="flex:1"></span><button class="go alt" id="diffBtn"></button></div>
     <div id="levels"></div>
     <div class="keys">
       <kbd>↑</kbd> ride · <kbd>←</kbd><kbd>→</kbd> / <kbd>A</kbd><kbd>D</kbd> steer on the ground, balance in the air · <kbd>Space</kbd>/<kbd>Shift</kbd>/<kbd>N</kbd> sprint · <kbd>↓</kbd> brake · <kbd>B</kbd> bunny hop<br>
@@ -374,7 +374,7 @@ let cameoT = 0;
 function cameo(e, t, l, ms = 6000) { $('cE').textContent = e; $('cT').textContent = t; $('cL').textContent = l; $('cameo').style.display = 'block'; clearTimeout(cameoT); cameoT = setTimeout(() => $('cameo').style.display = 'none', ms); }
 function modal(t, html) { $('mT').textContent = t; $('mB').innerHTML = html; $('modal').style.display = 'flex'; }
 $('mClose').onclick = () => $('modal').style.display = 'none';
-const SET = {sound: true, names: true, cam: 'close', shake: true, laps: 1, ghost: false};
+const SET = {sound: true, names: true, cam: 'close', shake: true, laps: 1, ghost: false, hard: false};
 try { Object.assign(SET, JSON.parse(localStorage.getItem('li3d_set') || '{}')); } catch (e) {}
 function saveSet() { try { localStorage.setItem('li3d_set', JSON.stringify(SET)); } catch (e) {} }
 let AC = null;
@@ -396,7 +396,7 @@ function renderMenu() {
   lacAlert.hidden = true;
   renderRiders();
   $('levels').innerHTML = LEVELS.map((l, i) => {
-    const lock = !NET.mode && i + 1 > unlocked, b = best[bestKey(i, lapsFor(l, SET.laps))];
+    const lock = !NET.mode && i + 1 > unlocked, b = best[bestKey(i, lapsFor(l, SET.laps), SET.hard)];
     const st = b ? '★'.repeat(b.stars) + '☆'.repeat(3 - b.stars) : (lock ? '🔒' : '☆☆☆');
     return `<button class="lv ${lock ? 'locked' : ''}" data-i="${i}" type="button"><span><b>${i + 1}. ${l.name}</b><small>${l.sub}${l.theme === 'ventoux' && SET.laps > 1 ? ' · point-to-point, always 1 lap' : ''}${b ? ' · best ' + b.time.toFixed(1) + ' s' : ''}</small></span><span class="st">${st}</span></button>`;
   }).join('');
@@ -1221,13 +1221,34 @@ function buildRunningFan(seed) {
   scene.add(group);
   return {group, legs, trigger: TR.finish * (.36 + seed * .41), side:seed < .5 ? -1 : 1, elapsed:0, started:false};
 }
+// Francouzský fanoušek: skutečný francouzský hlas prohlížeče (Windows/Android/macOS ho mají), jinak původní nahrávka.
+const ALLEZ_LINES = ['Allez ! Allez ! Allez !', 'Allez, vas-y !', 'Allez, courage !', 'Allez, allez, plus vite !', 'Vas-y, allez, allez !'];
+let frVoice = null;
+function pickFrVoice() {
+  try {
+    const vs = speechSynthesis.getVoices().filter(v => /^fr(-|_|$)/i.test(v.lang));
+    frVoice = vs.find(v => /fr-FR/i.test(v.lang) && /natural|online|neural|google|thomas|amélie|amelie|denise|henri/i.test(v.name)) || vs.find(v => /fr-FR/i.test(v.lang)) || vs[0] || null;
+  } catch (e) { frVoice = null; }
+}
+try { pickFrVoice(); speechSynthesis.addEventListener('voiceschanged', pickFrVoice); } catch (e) {}
+function speakFrench(text) {
+  try {
+    if (!frVoice || !window.speechSynthesis) return false;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = frVoice; u.lang = frVoice.lang; u.rate = 1.15; u.pitch = 1.15; u.volume = 1;
+    speechSynthesis.speak(u);
+    return true;
+  } catch (e) { return false; }
+}
 function updateRunningFan(dt) {
   const fan = runningFan;
   if (!fan || S.phase !== 'race') return;
   if (!fan.started && R.prog >= fan.trigger && R.v > 1.5 && R.crash <= 0) {
     fan.started = true;
-    toast('🇫🇷 ALLEZ !', '', 2100);
-    if (SET.sound) {
+    const line = pick(ALLEZ_LINES);
+    toast('🇫🇷 ' + line.toUpperCase(), '', 2100);
+    if (SET.sound && !speakFrench(line)) {
       allezAudio.currentTime = 0;
       allezAudio.play().catch(() => {});
     }
@@ -1680,13 +1701,18 @@ const terrainSkill = (rider, theme) => (rider.skill && Number.isFinite(rider.ski
 const lapsFor = (lv, n) => lv.theme === 'ventoux' ? 1 : clamp(Math.round(n) || 1, 1, 3);
 const GOAL = () => TR.finish + ((S.laps || 1) - 1) * TR.L;
 const lapBase = p => Math.max(0, Math.floor(p / TR.L)) * TR.L;
-const bestKey = (lv = LV, laps = S.laps || 1) => laps > 1 ? lv + 'x' + laps : lv;
+// Hard: boti +10 % rychlost, peloton čeká až 30 m před tebou (a slaběji), laktát +5 %
+const HARD = {bot: 1.10, waitGap: 30, waitRate: 0.15, waitMax: 3, lac: 1.05};
+const isHard = () => !!S.hard;
+const bestKey = (lv = LV, laps = S.laps || 1, hard = isHard()) => (laps > 1 ? lv + 'x' + laps : '' + lv) + (hard ? 'h' : '');
 function renderLaps() {
   const guest = (NET.mode || NET.code) && !NET.host;
-  document.querySelectorAll('#lapRow .go').forEach(b => { b.classList.toggle('sel', +b.dataset.laps === SET.laps); b.disabled = !!guest; });
+  document.querySelectorAll('#lapRow .go[data-laps]').forEach(b => { b.classList.toggle('sel', +b.dataset.laps === SET.laps); b.disabled = !!guest; });
+  const d = $('diffBtn'); d.textContent = SET.hard ? '🔥 Hard' : 'Normal'; d.classList.toggle('sel', SET.hard); d.disabled = !!guest;
 }
-document.querySelectorAll('#lapRow .go').forEach(b => b.onclick = () => { SET.laps = +b.dataset.laps; saveSet(); renderMenu(); });
-function startLevel(i, runnerRoll = Math.random(), hostRiders = [], fromHost = false, laps = SET.laps) {
+document.querySelectorAll('#lapRow .go[data-laps]').forEach(b => b.onclick = () => { SET.laps = +b.dataset.laps; saveSet(); renderMenu(); });
+$('diffBtn').onclick = () => { SET.hard = !SET.hard; saveSet(); renderMenu(); };
+function startLevel(i, runnerRoll = Math.random(), hostRiders = [], fromHost = false, laps = SET.laps, hard = SET.hard) {
   if (!Number.isInteger(i) || !LEVELS[i] || ((NET.mode || NET.code) && !NET.host && !fromHost)) return;
   const claimed = new Set([CH.id, ...hostRiders]);
   if (NET.mode) for (const player of Object.values(NET.peers)) claimed.add(getRider(player.c).id);
@@ -1695,6 +1721,7 @@ function startLevel(i, runnerRoll = Math.random(), hostRiders = [], fromHost = f
   lacAlertUntil = 0;
   runnerShoutAudio.pause();
   allezAudio.pause();
+  try { speechSynthesis.cancel(); } catch (e) {}
   remcoShoutAudio.pause();
   saganAudio.pause();
   pavelAudio.pause();
@@ -1702,7 +1729,7 @@ function startLevel(i, runnerRoll = Math.random(), hostRiders = [], fromHost = f
   laps = lapsFor(LEVELS[i], laps);
   S.awarded = false;
   if (NET.mode && NET.host && NET.series.n >= 3) NET.series = {n: 0, sc: {}};
-  if (NET.mode && NET.host) NET.mine.lb = {lv: i, seq: Date.now() + Math.random(), runnerRoll, claimed: [...claimed], laps};
+  if (NET.mode && NET.host) NET.mine.lb = {lv: i, seq: Date.now() + Math.random(), runnerRoll, claimed: [...claimed], laps, hard: !!hard};
   S.dnf = false; S.cutMsg = false; S.cutLeft = null; S.draft = 0;
   if (NET.mode) { NET.mine.fin = null; NET.mine.rdy = 0; NET.mine.dnf = 0; }
   if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
@@ -1718,7 +1745,7 @@ function startLevel(i, runnerRoll = Math.random(), hostRiders = [], fromHost = f
   });
   for (const b of TR.barriers) b.done = false;
   S.ctw = 0; S.sprintT = 0; S.climb = 0; S.carUsed = false; S.carWarn = false; removeTrain(); kart = null; S.kartIdx = 0;
-  Object.assign(S, {phase: 'count', t: 0, count: 3.2, idle: 0, crashes: 0, flips: 0, maxLac: 0, rage: 0, ebike: 0, overload: 0, nextRage: 0, bonk: 0, goBeep: false, shake: 0, laps, lapNow: 1, goAt: 0, startJudged: false, spin: 0});
+  Object.assign(S, {phase: 'count', t: 0, count: 3.2, idle: 0, crashes: 0, flips: 0, maxLac: 0, rage: 0, ebike: 0, overload: 0, nextRage: 0, bonk: 0, goBeep: false, shake: 0, laps, lapNow: 1, hard: !!hard});
   setupGhost();
   camPos = null;
   document.body.classList.remove('menu-open');
@@ -1815,7 +1842,7 @@ function updateBots(dt) {
     if (b.crash > 0) { b.crash -= dt; b.v = 0; if (b.fin === null && b.prog >= GOAL()) b.fin = S.t; continue; }
     const gap = b.prog - R.prog, z = zoneAt(b.prog);
     const sl = Math.atan(H(b.prog + 0.5) - H(b.prog - 0.5));
-    let tv = lvl.bot * b.mult * b.form * (1 + 0.06 * Math.sin(S.t * b.fq + b.ph)) - Math.sin(sl) * 14 * (sl > 0 ? b.climb : 1);
+    let tv = lvl.bot * (isHard() ? HARD.bot : 1) * b.mult * b.form * (1 + 0.06 * Math.sin(S.t * b.fq + b.ph)) - Math.sin(sl) * 14 * (sl > 0 ? b.climb : 1);
     // náhodné události: nástup, krize, změna stopy, občas pád
     if (S.phase === 'race' && b.fin === null) {
       b.nextEv -= dt;
@@ -1831,7 +1858,7 @@ function updateBots(dt) {
     if (b.atk > 0) { b.atk -= dt; tv *= 1.18; }
     if (b.fade > 0) { b.fade -= dt; tv *= 0.87; }
     if (z === 'mud') tv *= 0.75; if (z === 'rocks') tv *= 0.85; if (z === 'sand') tv *= 0.65;
-    if (gap > 16) tv -= Math.min(6, (gap - 16) * 0.3);
+    { const wg = isHard() ? HARD.waitGap : 16; if (gap > wg) tv -= Math.min(isHard() ? HARD.waitMax : 6, (gap - wg) * (isHard() ? HARD.waitRate : 0.3)); }
     if (gap < -28) tv += Math.min(4, (-gap - 28) * 0.15);
     if (b.fin !== null) tv = 4;
     tv = Math.max(2.5, tv);
@@ -1847,13 +1874,7 @@ function update(dt) {
   if (S.phase === 'count') {
     S.count -= dt; const n = Math.ceil(S.count);
     $('count').style.display = 'flex'; $('count').textContent = n > 0 ? n : 'GO!';
-    if (S.count <= 0 && !S.goBeep) {
-      S.goBeep = true; beep(1200, .2); S.goAt = performance.now();
-      if (keys.up || keys.sprint) {            // už drží plyn: buď trefil okno těsně před GO, nebo šlapal moc brzo
-        S.startJudged = true;
-        if (S.goAt - pedalDownAt <= 180) perfectStart(); else { S.spin = 1.3; toast('🛞 Too early – wheelspin!', '', 1600); beep(180, .2, .05); }
-      }
-    }
+    if (S.count <= 0 && !S.goBeep) { S.goBeep = true; beep(1200, .2); }
     if (S.count <= -0.5) { S.phase = 'race'; $('count').style.display = 'none'; }
     if (S.count > 0) return;
   }
@@ -1876,7 +1897,7 @@ function update(dt) {
   if (S.rage > 0 && dl > 0) dl *= 0.6;
   if (S.ctw > 0 && dl > 0) dl *= 0.5;
   if (sprint) S.sprintT += dt;
-  R.lac = clamp(R.lac + dl * (dl > 0 ? lvl.lac * CH.lac : 1) * dt, 0, 100);
+  R.lac = clamp(R.lac + dl * (dl > 0 ? lvl.lac * CH.lac * (isHard() ? HARD.lac : 1) : 1) * dt, 0, 100);
   S.maxLac = Math.max(S.maxLac, R.lac);
   if (R.lac >= 100 && S.overload <= 0) {
     buzz([60, 50, 60, 50, 200]); S.overload = 3; R.lac = 65; lacAlertUntil = S.t + 2.6; beep(200, .4, .08); egg('over');
@@ -1899,7 +1920,6 @@ function update(dt) {
     const zone = zoneAt(nr.s), off = Math.abs(nr.d) > TR.hw;
     let acc = 0;
     if (pedal) acc = sprint ? CH.sprint : CH.cruise;
-    if (S.spin > 0) { S.spin -= dt; if (pedal) acc *= 0.3; }
     if (S.ebike > 0 && pedal) acc *= 1.7;
     if (S.rage > 0 && pedal) acc *= 1.2;
     if (S.ctw > 0 && pedal) acc += 1.3;
@@ -2072,6 +2092,7 @@ function finish(time) {
   save();
   const verdict = pl === 1 ? 'You dropped the bunch. Your legs filed a complaint.' : pl <= 3 ? 'Podium. Lactate: present. Dignity: mostly.' : 'You finished. That counts. Barely.';
   $('rTitle').textContent = dnf ? '⏱ ' + lvl.name + ' – DNF (time cut)' : (pl === 1 ? '🏆 ' : '') + lvl.name + ' – ' + ord;
+  if (isHard()) $('rTitle').textContent += ' · 🔥 Hard';
   $('rStats').innerHTML = `<p>${verdict}</p>` +
     `<div class="stat"><span>Rider</span><b>${CH.name}</b></div><div class="stat"><span>Time</span><b>${time.toFixed(1)} s</b></div><div class="stat"><span>Place</span><b>${pl} / ${fieldSize()}</b></div>` +
     `<div class="stat"><span>Crashes</span><b>${S.crashes}</b></div><div class="stat"><span>Barrel rolls</span><b>${S.flips}</b></div>` +
@@ -2106,15 +2127,7 @@ function clearInputs() {
   heldKeys.clear(); heldPointers.clear();
   for (const action of Object.keys(keys)) setKey(action, false);
 }
-let pedalDownAt = 0;
-function perfectStart() { R.v = Math.max(R.v, 6.5); toast('🚀 PERFECT START!', 'egg', 1500); beep(1500, .12); buzz(40); }
-function setKey(k, v) {
-  if (v && !keys[k] && (k === 'up' || k === 'sprint')) {
-    pedalDownAt = performance.now();
-    if (S.goAt && !S.startJudged && (S.phase === 'count' || S.phase === 'race')) { S.startJudged = true; if (pedalDownAt - S.goAt <= 250) perfectStart(); }
-  }
-  keys[k] = v; $(BTN[k]).classList.toggle('on', v);
-}
+function setKey(k, v) { keys[k] = v; $(BTN[k]).classList.toggle('on', v); }
 addEventListener('keydown', e => {
   if (e.target?.closest?.('input, textarea, [contenteditable]')) return;
   const code = drivingKey(e), action = keyBindings[code];
@@ -2475,12 +2488,12 @@ function onNetUpdate() {
     const h = hostPresence(), lb = h && h.lb;
     if (lb && typeof lb.lv === 'number' && lb.lv >= 0 && lb.lv < LEVELS.length) {
       if (NET.lastLb === undefined) NET.lastLb = lb.seq;           // starý start při připojení ignorovat
-      else if (lb.seq !== NET.lastLb) { NET.lastLb = lb.seq; $('pause').style.display = 'none'; $('modal').style.display = 'none'; startLevel(lb.lv, Number.isFinite(lb.runnerRoll) ? clamp(lb.runnerRoll, 0, 1) : undefined, Array.isArray(lb.claimed) ? lb.claimed : [], true, lb.laps); }
+      else if (lb.seq !== NET.lastLb) { NET.lastLb = lb.seq; $('pause').style.display = 'none'; $('modal').style.display = 'none'; startLevel(lb.lv, Number.isFinite(lb.runnerRoll) ? clamp(lb.runnerRoll, 0, 1) : undefined, Array.isArray(lb.claimed) ? lb.claimed : [], true, lb.laps, lb.hard === true); }
     } else if (NET.lastLb === undefined) NET.lastLb = null;
   }
   if (S.phase === 'done') renderMpResults();
 }
-const VERSION = 31;
+const VERSION = 32;
 const CHAT = ['GG 👏', 'Wait! ✋', '😂', 'Go go go! 🔥', 'One more? 🔁', 'Ready? 👀', 'Nice one 💪', 'Oops 🙈'];
 const PTS = [10, 7, 5, 3, 2, 1];
 const esc = t => String(t == null ? '' : t).replace(/[<>&"]/g, '').slice(0, 24);
